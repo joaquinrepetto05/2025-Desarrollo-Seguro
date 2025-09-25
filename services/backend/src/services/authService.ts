@@ -58,7 +58,12 @@ static async createUser(user: User) {
         <p>Click <a href="${ link }">here</a> to activate your account.</p>
       </body>
     </html>`;
-  const htmlBody = ejs.render(template);
+    
+    const htmlBody = ejs.render(template, {
+      firstName: user.first_name,
+      lastName: user.last_name,
+      activationLink: link
+    });
 
   await transporter.sendMail({
     from: "info@example.com",

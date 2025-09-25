@@ -1,13 +1,21 @@
 import { Request, Response, NextFunction } from 'express';
 import InvoiceService from '../services/invoiceService';
-import { Invoice } from '../types/invoice';
+
+
+const getAuthenticatedUserId = (req: Request): string | undefined => {
+  return (req as any).user?.id;
+};
 
 const listInvoices = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const userId = getAuthenticatedUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const state = req.query.status as string | undefined;
     const operator = req.query.operator as string | undefined;
-    const id   = (req as any).user!.id; 
-    const invoices = await InvoiceService.list(id, state,operator);
+    const invoices = await InvoiceService.list(userId, state, operator);
     res.json(invoices);
   } catch (err) {
     next(err);
@@ -16,6 +24,11 @@ const listInvoices = async (req: Request, res: Response, next: NextFunction) => 
 
 const setPaymentCard = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const userId = getAuthenticatedUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const invoiceId = req.params.id;
     const paymentBrand = req.body.paymentBrand;
     const ccNumber = req.body.ccNumber;
@@ -25,9 +38,9 @@ const setPaymentCard = async (req: Request, res: Response, next: NextFunction) =
     if (!paymentBrand || !ccNumber || !ccv || !expirationDate) {
       return res.status(400).json({ error: 'Missing payment details' });
     }
-    const id   = (req as any).user!.id; 
+
     await InvoiceService.setPaymentCard(
-      id,
+      userId,
       invoiceId,
       paymentBrand,
       ccNumber,
@@ -43,17 +56,21 @@ const setPaymentCard = async (req: Request, res: Response, next: NextFunction) =
 
 const getInvoicePDF = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const userId = getAuthenticatedUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const invoiceId = req.params.id;
     const pdfName = req.query.pdfName as string | undefined;
 
     if (!pdfName) {
       return res.status(400).json({ error: 'Missing parameter pdfName' });
     }
-    const pdf = await InvoiceService.getReceipt(invoiceId, pdfName);
-    // return the pdf as a binary response
+
+    const pdf = await InvoiceService.getReceipt(invoiceId, userId, pdfName);
     res.setHeader('Content-Type', 'application/pdf');
     res.send(pdf);
-
   } catch (err) {
     next(err);
   }
@@ -61,10 +78,14 @@ const getInvoicePDF = async (req: Request, res: Response, next: NextFunction) =>
 
 const getInvoice = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const invoiceId = req.params.id;
-    const invoice = await InvoiceService.getInvoice(invoiceId);
-    res.status(200).json(invoice);
+    const userId = getAuthenticatedUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
+    const invoiceId = req.params.id;
+    const invoice = await InvoiceService.getInvoice(invoiceId, userId);
+    res.status(200).json(invoice);
   } catch (err) {
     next(err);
   }
