@@ -13,6 +13,8 @@ interface InvoiceRow {
   status: string;
 }
 
+const INVOICES_DIR = process.env.INVOICES_DIR || path.join(__dirname, '../../invoices'); // Carpeta raíz para todos los invoices
+
 class InvoiceService {
   static async list( userId: string, status?: string, operator?: string): Promise<Invoice[]> {
     let q = db<InvoiceRow>('invoices').where({ userId: userId });
@@ -62,27 +64,37 @@ class InvoiceService {
   }
 
 
-  static async getReceipt(
-    invoiceId: string,
-    pdfName: string
-  ) {
-    // check if the invoice exists
+  static async getReceipt(invoiceId: string, pdfName: string) {
     const invoice = await db<InvoiceRow>('invoices').where({ id: invoiceId }).first();
     if (!invoice) {
       throw new Error('Invoice not found');
     }
-    try {
-      const filePath = `/invoices/${pdfName}`;
-      const content = await fs.readFile(filePath, 'utf-8');
-      return content;
-    } catch (error) {
-      // send the error to the standard output
-      console.error('Error reading receipt file:', error);
+
+    if (!pdfName || typeof pdfName !== 'string') {
+      throw new Error('Invalid file name');
+    }
+    if (pdfName.includes('/') || pdfName.includes('\\')) { // Filtramos caracteres que se usan en rutas
+      throw new Error('Invalid file name');
+    }
+
+    const candidatePath = path.resolve(INVOICES_DIR, pdfName); // Construimos la ruta
+
+    const realInvoicesDir = await fs.realpath(INVOICES_DIR).catch(() => {
+      throw new Error('Invoices directory not accessible');
+    });
+    const realCandidate = await fs.realpath(candidatePath).catch(() => null);
+
+    if (!realCandidate) {
       throw new Error('Receipt not found');
+    }
 
-    } 
+    if (!realCandidate.startsWith(realInvoicesDir + path.sep) && realCandidate !== realInvoicesDir) { // Verificamos que la direccion este permitida
+      throw new Error('Access to the requested resource is forbidden');
+    }
 
-  };
+    const content = await fs.readFile(realCandidate, 'utf-8');
+    return content;
+  }
 
 };
 
