@@ -18,7 +18,11 @@ const INVOICES_DIR = process.env.INVOICES_DIR || path.join(__dirname, '../../inv
 class InvoiceService {
   static async list( userId: string, status?: string, operator?: string): Promise<Invoice[]> {
     let q = db<InvoiceRow>('invoices').where({ userId: userId });
-    if (status) q = q.andWhereRaw(" status "+ operator + " '"+ status +"'");
+    if (status) {
+      const allowedOps = ['=', '!=', '<', '>', '<=', '>=', 'like'];
+      const op = (operator && allowedOps.includes(operator)) ? operator : '=';
+      q = q.andWhere('status', op as any, status);
+    }
     const rows = await q.select();
     const invoices = rows.map(row => ({
       id: row.id,

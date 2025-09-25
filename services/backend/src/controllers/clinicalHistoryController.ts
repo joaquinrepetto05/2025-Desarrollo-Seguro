@@ -26,15 +26,12 @@ export const getClinicalHistory = async (req: Request, res: Response, next: Next
 export const createClinicalHistory = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { doctorName, diagnose } = req.body;
-    // if using multer for files: req.files as Express.Multer.File[]
-    //const files = Array.isArray(req.files) ? req.files : [];
-    const id   = (req as any).user!.id; 
-    const created = await ClinicalHistoryService.create(id, {});
-    /*
-      doctorName,
-      diagnose,
-      files: undefined
-    */
+    // collect uploaded files (if the route uses multer)
+    const files = Array.isArray((req as any).files) ? (req as any).files : [];
+    const id   = (req as any).user!.id;
+    // pass the data object to the service (service will sanitize before persisting)
+    const created = await ClinicalHistoryService.create(id, { doctorName, diagnose, files });
+
     res.status(201).json(created);
   } catch (err) {
     next(err);

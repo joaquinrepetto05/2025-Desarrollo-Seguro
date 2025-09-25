@@ -5,6 +5,9 @@ import path from 'path';
 import { promisify } from 'util';
 
 const unlink = promisify(fs.unlink);
+import createDOMPurify from 'dompurify';
+import { JSDOM } from 'jsdom';
+const DOMPurify = createDOMPurify(new JSDOM('').window);
 
 interface CHRow {
   id: string;
@@ -89,13 +92,17 @@ class ClinicalHistoryService {
     userId: string,
     data: any // { doctorName: string; diagnose: string; files: Express.Multer.File[] }
   ) {
+    const safeDoctorName = DOMPurify.sanitize(data?.doctorName || '', { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+    const safeDiagnose    = DOMPurify.sanitize(data?.diagnose    || '', { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+
     const [h] = await db<CHRow>('clinical_histories')
       .insert({
         user_id:     userId,
-        doctor_name: undefined, // data.doctorName,
-        diagnose:    undefined //data.diagnose
+        doctor_name: safeDoctorName,
+        diagnose:    safeDiagnose
       })
       .returning(['id', 'doctor_name', 'diagnose', 'created_at', 'updated_at']);
+
 
     const fileRows = undefined; 
     /* data.files.map(f => ({

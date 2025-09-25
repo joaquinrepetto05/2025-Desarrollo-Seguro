@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import DOMPurify from 'dompurify';
 import api from '../api.js';
 import Header from '../components/Header.jsx';
 import RightSideMenu from '../components/RightSideMenu.jsx';
@@ -127,7 +128,7 @@ export default function ClinicalRecords() {
                       <td className="p-3">
                         {new Date(rec.date).toLocaleDateString()}
                       </td>
-                      <td className="p-3">{rec.summary}</td>
+                      <td className="p-3">{DOMPurify.sanitize(rec.summary || '')}</td>
                       <td className="p-3">
                         <button className="py-1 px-3 bg-blue-600 text-white rounded hover:bg-blue-700">
                           View
