@@ -1,12 +1,13 @@
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
+import bcrypt from 'bcrypt';
 
 import AuthService from '../../src/services/authService';
 import db from '../../src/db';
 import { User } from '../../src/types/user';
 
-jest.mock('../../src/db')
-const mockedDb = db as jest.MockedFunction<typeof db>
+jest.mock('../../src/db');
+const mockedDb = db as jest.MockedFunction<typeof db>;
 
 // mock the nodemailer module
 jest.mock('nodemailer');
@@ -54,16 +55,21 @@ describe('AuthService.generateJwt', () => {
     await AuthService.createUser(user);
 
     // Verify the database calls
-    expect(insertChain.insert).toHaveBeenCalledWith({
+    expect(insertChain.insert).toHaveBeenCalledTimes(1);
+    const insertPayload = insertChain.insert.mock.calls[0][0];
+    expect(insertPayload).toMatchObject({
       email: user.email,
-      password: user.password,
       first_name: user.first_name,
       last_name: user.last_name,
       username: user.username,
       activated: false,
-      invite_token: expect.any(String),
-      invite_token_expires: expect.any(Date)
     });
+    expect(insertPayload.invite_token).toEqual(expect.any(String));
+    expect(insertPayload.invite_token_expires).toBeInstanceOf(Date);
+    expect(insertPayload.password).toEqual(expect.any(String));
+    expect(insertPayload.password).not.toBe(user.password);
+    expect(insertPayload.password.startsWith('$2')).toBe(true);
+    expect(await bcrypt.compare(user.password, insertPayload.password)).toBe(true);
 
     expect(nodemailer.createTransport).toHaveBeenCalled();
     expect(nodemailer.createTransport().sendMail).toHaveBeenCalledWith(expect.objectContaining({
@@ -93,6 +99,70 @@ describe('AuthService.generateJwt', () => {
     mockedDb.mockReturnValueOnce(selectChain as any);
     // Call the method to test
     await expect(AuthService.createUser(user)).rejects.toThrow('User already exists with that username or email');
+  });
+
+  it('createUser escapes template expressions before rendering invitation email', async () => {
+    const envOverrides: Record<string, string> = {
+      FRONTEND_URL: 'https://frontend.test',
+      SMTP_HOST: 'smtp.test',
+      SMTP_PORT: '2525',
+      SMTP_USER: 'mailer',
+      SMTP_PASS: 'super-secret',
+    };
+    const previousEnv: Record<string, string | undefined> = {};
+    Object.entries(envOverrides).forEach(([key, value]) => {
+      previousEnv[key] = process.env[key];
+      process.env[key] = value;
+    });
+
+    const ejsExpression = '7 * 6';
+    const maliciousUser = {
+      id: 'user-template',
+      email: 'template@test.com',
+      password: 'password123',
+      first_name: `First <%= ${ejsExpression} %>`,
+      last_name: 'Last',
+      username: 'template-user',
+    } as User;
+
+    const selectChain = {
+      where: jest.fn().mockReturnThis(),
+      orWhere: jest.fn().mockReturnThis(),
+      first: jest.fn().mockResolvedValue(null)
+    };
+    const insertChain = {
+      insert: jest.fn().mockResolvedValue(undefined)
+    };
+
+    mockedDb
+      .mockReturnValueOnce(selectChain as any)
+      .mockReturnValueOnce(insertChain as any);
+
+    try {
+      await AuthService.createUser(maliciousUser);
+    } finally {
+      Object.entries(previousEnv).forEach(([key, value]) => {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      });
+    }
+
+    expect(nodemailer.createTransport).toHaveBeenCalledTimes(1);
+
+    const transportResult = mockedNodemailer.createTransport.mock.results[0]?.value as { sendMail: jest.Mock } | undefined;
+    expect(transportResult).toBeDefined();
+    const sendMailMock = transportResult!.sendMail as jest.Mock;
+    expect(sendMailMock).toHaveBeenCalledTimes(1);
+
+    const emailPayload = sendMailMock.mock.calls[0][0] as { html?: string };
+    expect(emailPayload?.html).toBeDefined();
+    const htmlBody = String(emailPayload!.html);
+
+    expect(htmlBody).toContain(ejsExpression);
+    expect(htmlBody.replace(/\s+/g, ' ')).not.toContain('Hello First 42 Last');
   });
 
   it('updateUser', async () => {
@@ -146,29 +216,38 @@ describe('AuthService.generateJwt', () => {
   it('authenticate', async () => {
     const email = 'username';
     const password = 'password123';
+    const hashed = await bcrypt.hash(password, 10);
 
     // Mock the database get user
     const getUserChain = {
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
-      first: jest.fn().mockResolvedValue({password}),
+      first: jest.fn().mockResolvedValue({
+        id: 'user-123',
+        username: email,
+        password: hashed,
+      }),
     };
     // Mock the database update password
     mockedDb.mockReturnValueOnce(getUserChain as any);
 
     // Call the method to test
     const user = await AuthService.authenticate(email, password);
-    expect(getUserChain.where).toHaveBeenCalledWith({username : 'username'});
+    expect(getUserChain.where).toHaveBeenCalledWith({ username: 'username' });
     expect(user).toBeDefined();
   });
 
   it('authenticate wrong pass', async () => {
+    const hashed = await bcrypt.hash('different-password', 10);
 
     // Mock the database get user
     const getUserChain = {
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
-      first: jest.fn().mockResolvedValue({password:'otherpassword'}),
+      first: jest.fn().mockResolvedValue({
+        username: 'username',
+        password: hashed,
+      }),
     };
     // Mock the database update password
     mockedDb.mockReturnValueOnce(getUserChain as any);
@@ -189,7 +268,7 @@ describe('AuthService.generateJwt', () => {
     mockedDb.mockReturnValueOnce(getUserChain as any);
 
     // Call the method to test
-    await expect(AuthService.authenticate('username', 'password123')).rejects.toThrow('Invalid username or not activated');
+    await expect(AuthService.authenticate('username', 'password123')).rejects.toThrow('Invalid email or not activated');
   });
 
   it('sendResetPasswordEmail', async () => {
@@ -318,7 +397,6 @@ describe('AuthService.generateJwt', () => {
       password: password,
       invite_token: null,
       invite_token_expires: null,
-      activated:true
     });
 
     expect(updateChain.where).toHaveBeenCalledWith({ id: user_id });
@@ -346,7 +424,7 @@ describe('AuthService.generateJwt', () => {
     expect(token.length).toBeGreaterThan(0);
 
     // verify the token decodes to our payload
-    const decoded = jwt.verify(token,"secreto_super_seguro");
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'test-secret');
     expect((decoded as any).id).toBe(userId);
   });
 

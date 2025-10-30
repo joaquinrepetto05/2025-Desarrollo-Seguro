@@ -2,13 +2,18 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> } 
  */
+const bcrypt = require('bcrypt');
+
 exports.seed = async function(knex) {
+
+  const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS || 10);
+  const hashedPassword = await bcrypt.hash('password', saltRounds);
 
   const usersIds = await knex('users').insert([
     {
     username: 'test',
     email: 'test@example.local',
-    password: 'password',
+    password: hashedPassword,
     first_name: 'Test',
     last_name: 'User',
     activated: true,
@@ -20,7 +25,7 @@ exports.seed = async function(knex) {
     },{
     username: 'prod',
     email: 'prod@example.local',
-    password: 'password',
+    password: hashedPassword,
     first_name: 'Prod',
     last_name: 'User',
     activated: true,

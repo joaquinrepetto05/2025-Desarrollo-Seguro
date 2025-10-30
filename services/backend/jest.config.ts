@@ -9,6 +9,7 @@ const config: JestConfigWithTsJest = {
   testMatch: ['<rootDir>/test/**/*.test.ts'],
   collectCoverage: true,
   coverageDirectory: 'coverage',
+  setupFiles: ['<rootDir>/test/setup-env.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1'
   }
