@@ -26,6 +26,7 @@ def auth_headers() -> dict:
 
 
 def _fetch_invoices(params: dict, headers: dict) -> list:
+    # Helper para pegarle al /invoices con los params que queremos.
     response = requests.get(
         f"{API_BASE}/invoices",
         params=params,
@@ -43,14 +44,29 @@ def test_login(auth_headers: dict) -> None:
 
 
 def test_invoice_sql_injection_blocked(auth_headers: dict) -> None:
-    benign_params = {"status": "paid", "operator": "="}
-    benign_payload = _fetch_invoices(benign_params, auth_headers)
-    assert benign_payload, (
+    """
+    Este test verifica que no haya inyección SQL cuando filtramos facturas.
+
+    Antes el backend armaba la consulta con strings, por lo que si el atacante mandaba algo como "1"="1",
+    el resultado mostraria muchas mas filas de las que deberia, lo cual es una falla de seguridad.
+
+    Ahora se usan consultas parametrizadas (ORM), evitando la inyección de strings potencialmente
+    maliciosos.
+    """
+
+    ok_params = {"status": "paid", "operator": "="}
+    ok_payload = _fetch_invoices(ok_params, auth_headers)
+
+    # Se fija que ok_payload no esté vacio y si lo esta muestra el mensaje diciendo que faltan seeds.
+    assert ok_payload, (
         "Expected seeded invoices for the regression test. "
         "Run `docker compose exec backend npx knex --knexfile src/knexfile.ts seed:run` first."
     )
 
+    # Intento de ataque inyectando "OR 1=1" en el valor de status
     attack_params = {"status": "paid' OR '1'='1", "operator": "="}
     attack_payload = _fetch_invoices(attack_params, auth_headers)
 
-    assert len(attack_payload) <= len(benign_payload)
+    # Si la inyeccion funcionara, este resultado traeria mas filas.
+    # Con la mitigacion, no deberia superar al caso feliz.
+    assert len(attack_payload) <= len(ok_payload)
