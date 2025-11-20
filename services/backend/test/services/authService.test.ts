@@ -101,7 +101,9 @@ describe('AuthService.generateJwt', () => {
     await expect(AuthService.createUser(user)).rejects.toThrow('User already exists with that username or email');
   });
 
+// Verifica que el template injection no se evalue en el HTML del mail de invitacion
   it('createUser escapes template expressions before rendering invitation email', async () => {
+    // Variables de entorno necesarias para la generación del mail
     const envOverrides: Record<string, string> = {
       FRONTEND_URL: 'https://frontend.test',
       SMTP_HOST: 'smtp.test',
@@ -115,6 +117,7 @@ describe('AuthService.generateJwt', () => {
       process.env[key] = value;
     });
 
+    // Usuario con intento de template injection en first_name
     const ejsExpression = '7 * 6';
     const maliciousUser = {
       id: 'user-template',
@@ -137,7 +140,8 @@ describe('AuthService.generateJwt', () => {
     mockedDb
       .mockReturnValueOnce(selectChain as any)
       .mockReturnValueOnce(insertChain as any);
-
+    
+    // Ejecutamos createUser y luego restauramos las variables del env
     try {
       await AuthService.createUser(maliciousUser);
     } finally {
@@ -149,7 +153,7 @@ describe('AuthService.generateJwt', () => {
         }
       });
     }
-
+    // Nos fijamos que se haya envaido un solo mail
     expect(nodemailer.createTransport).toHaveBeenCalledTimes(1);
 
     const transportResult = mockedNodemailer.createTransport.mock.results[0]?.value as { sendMail: jest.Mock } | undefined;
@@ -157,10 +161,12 @@ describe('AuthService.generateJwt', () => {
     const sendMailMock = transportResult!.sendMail as jest.Mock;
     expect(sendMailMock).toHaveBeenCalledTimes(1);
 
+    // Obtenemos el HTML del mail generado
     const emailPayload = sendMailMock.mock.calls[0][0] as { html?: string };
     expect(emailPayload?.html).toBeDefined();
     const htmlBody = String(emailPayload!.html);
 
+    // Los datos enviados deben tener la expresion literal, pero no debe evaluarse (osea que no tiene que tener 42), porque ahi seria template injection
     expect(htmlBody).toContain(ejsExpression);
     expect(htmlBody.replace(/\s+/g, ' ')).not.toContain('Hello First 42 Last');
   });
