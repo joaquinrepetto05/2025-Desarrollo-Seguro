@@ -118,7 +118,7 @@ describe('AuthService.generateJwt', () => {
     });
 
     // Usuario con intento de template injection en first_name
-    const ejsExpression = '7 * 6';
+    const ejsExpression = '2 * 2';
     const maliciousUser = {
       id: 'user-template',
       email: 'template@test.com',
@@ -166,9 +166,9 @@ describe('AuthService.generateJwt', () => {
     expect(emailPayload?.html).toBeDefined();
     const htmlBody = String(emailPayload!.html);
 
-    // Los datos enviados deben tener la expresion literal, pero no debe evaluarse (osea que no tiene que tener 42), porque ahi seria template injection
+    // Los datos enviados deben tener la expresion literal, pero no debe evaluarse (osea que no tiene que tener 4), porque ahi seria template injection
     expect(htmlBody).toContain(ejsExpression);
-    expect(htmlBody.replace(/\s+/g, ' ')).not.toContain('Hello First 42 Last');
+    expect(htmlBody.replace(/\s+/g, ' ')).not.toContain('Hello First 4 Last');
   });
 
   it('updateUser', async () => {
